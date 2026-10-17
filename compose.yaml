@@ -1,0 +1,212 @@
+name: telegram-memory
+
+# The four services below are the only long-lived containers. Project images are
+# tagged with the release from VERSION (TM_VERSION); scripts/update.sh builds them
+# from config/vendors.json and puts the vendor commits into image labels.
+# Secrets and bot settings live on the server under TM_ROOT.
+services:
+  coordinator:
+    image: telegram-memory/coordinator:${TM_VERSION:?TM_VERSION is set by scripts/update.sh}
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 640m
+    cpus: "0.35"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+    environment:
+      COORDINATOR_PORT: "8787"
+      COORDINATOR_MCP_TOKEN_FILE: /run/secrets/coordinator_mcp_token
+      OWNER_USER_ID_FILE: /run/secrets/owner_user_id
+      OPENVIKING_API_KEY_FILE: /run/secrets/openviking_api_key
+      BOT_PRINCIPALS_FILE: /run/secrets/bot_principals
+      TELEGRAM_MCP_URL: http://telegram-mcp:8765/mcp
+      OPENVIKING_MCP_URL: http://openviking:1933/mcp
+    secrets:
+      - coordinator_mcp_token
+      - source: coordinator_owner_user_id
+        target: owner_user_id
+      - openviking_api_key
+      - bot_principals
+    volumes:
+      - archive_data:/data/archive
+      - coordinator_state:/data/state
+      - coordinator_reports:/data/reports
+      - exchange_data:/exchange
+    networks:
+      - coordinator_telegram
+      - coordinator_openviking
+      - bots_coord
+    healthcheck:
+      test:
+        ["CMD", "node", "-e", "fetch('http://127.0.0.1:8787/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    labels:
+      com.telegram-memory.role: coordinator
+
+  bots:
+    image: telegram-memory/coordinator:${TM_VERSION:?TM_VERSION is set by scripts/update.sh}
+    entrypoint: ["node", "--experimental-strip-types", "/app/src/bots/main.ts"]
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 512m
+    cpus: "0.25"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+    environment:
+      BOTS_CONFIG_FILE: /run/config/bots.json
+    configs:
+      - source: bots_config
+        target: /run/config/bots.json
+    secrets:
+      - source: bots_owner_user_id
+        target: owner_user_id
+      - model_api_key
+      - receiver_bot_token
+      - receiver_coord_token
+      - talker_shared_bot_token
+      - talker_shared_coord_token
+    networks:
+      - bots_coord
+    labels:
+      com.telegram-memory.role: bots
+
+  telegram-mcp:
+    image: telegram-memory/telegram-mcp:${TM_VERSION:?TM_VERSION is set by scripts/update.sh}
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 512m
+    cpus: "0.35"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+    entrypoint: ["sh", "/usr/local/bin/telegram-memory-entrypoint.sh"]
+    environment:
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8765"
+      # The coordinator only needs read and media-download tools.
+      TELEGRAM_EXPOSED_TOOLS: read-only+download_media
+      TELEGRAM_ALLOW_SERVER_ROOTS_FALLBACK: "1"
+      TELEGRAM_TRANSCRIBE: "off"
+      TELEGRAM_SESSION_LOCK: exclusive
+      TELEGRAM_TRANSCRIPT_CACHE_DIR: /app/data/transcripts
+      # Second MCP server: notebooklm-mcp-cli, same internal network.
+      NOTEBOOKLM_MCP_TRANSPORT: http
+      NOTEBOOKLM_MCP_HOST: 0.0.0.0
+      NOTEBOOKLM_MCP_PORT: "8766"
+      # notebooklm-mcp has no authentication and refuses non-loopback binds by
+      # default; here only the coordinator shares its network and no port is published.
+      NOTEBOOKLM_ALLOW_EXTERNAL_BIND: "1"
+      NOTEBOOKLM_MCP_CLI_PATH: /app/data/nlm
+    secrets:
+      - telegram_api_id
+      - telegram_api_hash
+      - telegram_session_string
+      - notebooklm_cookies
+    volumes:
+      - telegram_data:/app/data
+      - exchange_data:/exchange
+    networks:
+      - coordinator_telegram
+    labels:
+      com.telegram-memory.role: telegram-mcp
+
+  openviking:
+    image: ${OPENVIKING_IMAGE:?OPENVIKING_IMAGE is set by scripts/update.sh}
+    restart: unless-stopped
+    read_only: true
+    mem_limit: 1600m
+    cpus: "1.0"
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    tmpfs:
+      - /tmp
+    environment:
+      OPENVIKING_WITH_BOT: "0"
+      OPENVIKING_SERVER_HOST: 0.0.0.0
+      OPENVIKING_SERVER_PORT: "1933"
+    secrets:
+      - source: openviking_config
+        target: /app/.openviking/ov.conf
+    volumes:
+      - openviking_data:/app/.openviking
+    networks:
+      - coordinator_openviking
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:1933/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    labels:
+      com.telegram-memory.role: openviking
+
+secrets:
+  coordinator_mcp_token:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/coordinator/coordinator_mcp_token
+  coordinator_owner_user_id:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/coordinator/owner_user_id
+  openviking_api_key:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/coordinator/openviking_api_key
+  bot_principals:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/coordinator/bot_principals
+  bots_owner_user_id:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/bots/owner_user_id
+  model_api_key:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/bots/model_api_key
+  receiver_bot_token:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/bots/receiver_bot_token
+  receiver_coord_token:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/bots/receiver_coord_token
+  talker_shared_bot_token:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/bots/talker_shared_bot_token
+  talker_shared_coord_token:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/bots/talker_shared_coord_token
+  telegram_api_id:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/telegram-mcp/telegram_api_id
+  telegram_api_hash:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/telegram-mcp/telegram_api_hash
+  telegram_session_string:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/telegram-mcp/telegram_session_string
+  notebooklm_cookies:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/telegram-mcp/notebooklm_cookies
+  openviking_config:
+    file: ${TM_ROOT:-/etc/telegram-memory}/secrets/openviking/ov.conf
+
+configs:
+  bots_config:
+    file: ${TM_ROOT:-/etc/telegram-memory}/config/bots.json
+
+volumes:
+  archive_data:
+    name: telegram-memory-archive
+  coordinator_state:
+    name: telegram-memory-state
+  coordinator_reports:
+    name: telegram-memory-reports
+  exchange_data:
+    name: telegram-memory-exchange
+  telegram_data:
+    name: telegram-memory-telegram
+  openviking_data:
+    name: telegram-memory-openviking
+
+networks:
+  coordinator_telegram:
+    name: telegram-memory-coordinator-telegram
+  coordinator_openviking:
+    name: telegram-memory-coordinator-openviking
+  bots_coord:
+    name: telegram-memory-bots-coordinator

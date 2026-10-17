@@ -1,0 +1,8 @@
+{
+  "openviking": "v0.4.23",
+  "source": "openviking/parse/registry.py: extensions of the registered parsers (text, markdown, pdf, html, anydoc, zip, image, audio, video); .ts is left out because OpenViking accepts it only after an MPEG-TS probe",
+  "document": [".txt", ".text", ".md", ".markdown", ".mdown", ".mkd", ".pdf", ".html", ".htm", ".doc", ".docx", ".docm", ".odt", ".rtf", ".pptx", ".ppt", ".pptm", ".pps", ".ppsx", ".ppsm", ".pot", ".odp", ".xlsx", ".xls", ".xlsm", ".xlsb", ".ods", ".csv", ".epub", ".zip"],
+  "image": [".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp", ".svg", ".tiff", ".tif", ".ico", ".dib", ".icns", ".sgi", ".jp2"],
+  "audio": [".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".opus", ".ac3"],
+  "video": [".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv"]
+}

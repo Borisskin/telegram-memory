@@ -1,0 +1,23 @@
+{
+  "telegram-mcp": {
+    "repo": "https://github.com/Borisskin/telegram-mcp.git",
+    "commit": "ffeebe86d40cd73affad919d94fbf0460922c554",
+    "version": "v3.2.62"
+  },
+  "notebooklm-mcp-cli": {
+    "repo": "https://github.com/Borisskin/gemini-notebook-mcp-cli.git",
+    "commit": "f3b8edae99e2826a8537cc0e69319b0f127b958a",
+    "version": "0.15.5"
+  },
+  "obsidian-clipper": {
+    "repo": "https://github.com/Borisskin/obsidian-clipper.git",
+    "commit": "6d56d618b00bd970aa738d6a7a61edee27783e81"
+  },
+  "node": {
+    "image": "node:24.17.0-bookworm-slim@sha256:862263c612aa437e3037674b85419622a9d93bff80aa1eee5398dfe686375532"
+  },
+  "openviking": {
+    "image": "ghcr.io/volcengine/openviking@sha256:fb4cd789fd3303509edd1c10437ff63d4fab56b622494ac621f1fda042540ed4",
+    "version": "v0.4.23"
+  }
+}
